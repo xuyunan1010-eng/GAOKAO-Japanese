@@ -1,230 +1,207 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>日语试卷单词提取工具</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>日语试卷单词频率查询工具</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<style>
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
-  background: #ffffff;
-  color: #222;
-}
-header {
-  padding: 16px 24px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f8fbff;
-}
-header h1 {
-  margin: 0;
-  font-size: 20px;
-  color: #2563eb;
-}
-main {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 16px;
-  padding: 16px 24px;
-}
-.panel {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-  padding: 16px;
-}
-.upload-area {
-  border: 2px dashed #93c5fd;
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  color: #2563eb;
-  cursor: pointer;
-}
-.word-card {
-  display: inline-block;
-  margin: 4px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #f9fafb;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-}
-.freq {
-  font-size: 12px;
-  color: #6b7280;
-}
-h3 {
-  margin: 16px 0 8px;
-  color: #2563eb;
-}
-</style>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans", "Noto Sans CJK SC", sans-serif;
+      background: #ffffff;
+      color: #222;
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #e5e7eb;
+      background: #f8fbff;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+      color: #2563eb;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 16px;
+      padding: 16px 24px;
+    }
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+      padding: 16px;
+    }
+    .upload-area {
+      border: 2px dashed #93c5fd;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      color: #2563eb;
+      cursor: pointer;
+    }
+    .word-section h3 {
+      margin-top: 20px;
+      color: #1d4ed8;
+    }
+    .sub-title {
+      margin: 12px 0 6px;
+      font-weight: bold;
+    }
+    .word-card {
+      display: inline-block;
+      margin: 4px;
+      padding: 6px 10px;
+      background: #f9fafb;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .word-card:hover {
+      background: #eff6ff;
+    }
+    .freq {
+      font-size: 12px;
+      color: #6b7280;
+    }
+    aside h3 {
+      margin-top: 0;
+      color: #2563eb;
+    }
+    .vocab-item {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+  </style>
 </head>
 
 <body>
 <header>
-  <h1>日语试卷单词提取工具</h1>
+  <h1>日语试卷单词提取工具（Word 稳定版）</h1>
 </header>
 
 <main>
-<section class="panel">
-  <label class="upload-area" for="fileInput">
-    点击或拖拽上传日语试卷图片 / Word 文档
-  </label>
-  <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.docx" hidden>
+  <section class="panel">
+    <label class="upload-area" for="fileInput">
+      点击上传 Word（.docx）日语试卷
+    </label>
+    <input type="file" id="fileInput" accept=".docx" hidden />
 
-  <div id="status" style="margin-top:12px;color:#6b7280"></div>
+    <div id="status" style="margin-top:10px;color:#6b7280"></div>
+    <div id="wordList"></div>
+  </section>
 
-  <!-- 进度条 -->
-  <div id="progressBox" style="margin-top:8px; display:none;">
-    <div style="height:8px;background:#e5e7eb;border-radius:4px;">
-      <div id="progressBar"
-           style="height:8px;width:0%;background:#60a5fa;border-radius:4px;transition:width 0.3s;">
-      </div>
-    </div>
-  </div>
-
-  <div id="wordList"></div>
-</section>
-
-<aside class="panel">
-  <h3>📘 生词本</h3>
-  <div id="vocabBook"></div>
-</aside>
+  <aside class="panel">
+    <h3>📘 生词本</h3>
+    <div id="vocabBook"></div>
+  </aside>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-
-const fileInput = document.getElementById("fileInput");
-const statusEl = document.getElementById("status");
-const wordListEl = document.getElementById("wordList");
-const vocabBookEl = document.getElementById("vocabBook");
-const progressBox = document.getElementById("progressBox");
-const progressBar = document.getElementById("progressBar");
+const fileInput = document.getElementById('fileInput');
+const statusEl = document.getElementById('status');
+const wordListEl = document.getElementById('wordList');
+const vocabBookEl = document.getElementById('vocabBook');
 const vocabSet = new Set();
 
-fileInput.addEventListener("change", async () => {
+fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
 
-  statusEl.textContent = "正在解析文件，请稍候…";
-  wordListEl.innerHTML = "";
-  progressBox.style.display = "block";
-  progressBar.style.width = "20%";
-
-  let text = "";
-
-  if (file.type.includes("image")) {
-    const result = await Tesseract.recognize(file, "jpn");
-    text = result.data.text;
-  } else if (file.name.endsWith(".docx")) {
-    const buffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-    text = result.value;
-  }
-
-  progressBar.style.width = "60%";
-  analyzeJapanese(text);
+  statusEl.textContent = '正在解析 Word 文档…';
+  const buffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+  analyzeJapanese(result.value);
 });
 
 function analyzeJapanese(text) {
   kuromoji.builder({
-    dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
+    dicPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'
   }).build((err, tokenizer) => {
     if (err) {
-      statusEl.textContent = "分词器加载失败";
+      statusEl.textContent = '分词器加载失败';
       return;
     }
 
-    progressBar.style.width = "80%";
+    const map = { 名词:{}, 动词:{}, 形容词:{} };
+    const tokens = tokenizer.tokenize(text);
 
-    const result = {
-      动词: {},
-      名词: {},
-      形容词: {}
-    };
-
-    tokenizer.tokenize(text).forEach(t => {
-      const base = t.basic_form !== "*" ? t.basic_form : t.surface_form;
+    tokens.forEach(t => {
+      let base = t.basic_form !== '*' ? t.basic_form : t.surface_form;
       let cat = null, sub = null;
 
-      if (t.pos === "動詞") {
-        cat = "动词";
-        if (t.conjugated_type?.includes("五段")) sub = "一类动词（五段）";
-        else if (t.conjugated_type?.includes("一段")) sub = "二类动词（一段）";
-        else if (base === "する") sub = "三类动词（サ变）";
-        else if (base === "来る") sub = "三类动词（カ变）";
-        else sub = "其他";
+      if (t.pos === '動詞') {
+        cat = '动词';
+        if (t.conjugated_type?.includes('五段')) sub = '一类动词（五段）';
+        else if (t.conjugated_type?.includes('一段')) sub = '二类动词（一段）';
+        else if (base === 'する') sub = '三类动词（サ变）';
+        else if (base === '来る') sub = '三类动词（カ变）';
+        else sub = '其他';
       }
 
-      else if (t.pos === "名詞") {
-        cat = "名词";
-        if (t.pos_detail_1 === "数") sub = "量词";
-        else if (/^[ァ-ヶー]+$/.test(t.surface_form)) sub = "片假名名词";
-        else if (["上","下","前","後","中","外","右","左","東","西","南","北"].includes(base)) sub = "方位名词";
-        else if (t.pos_detail_1 === "一般") sub = "普通名词";
-        else sub = "其他";
+      else if (t.pos === '名詞') {
+        cat = '名词';
+        if (t.pos_detail_1 === '数') sub = '量词';
+        else if (/^[ァ-ヶー]+$/.test(t.surface_form)) sub = '片假名名词';
+        else if (['上','下','前','後','中','外','右','左','東','西','南','北'].includes(base)) sub = '方位名词';
+        else if (t.pos_detail_1 === '一般') sub = '普通名词';
+        else sub = '其他';
       }
 
-      else if (t.pos === "形容詞") {
-        cat = "形容词";
-        if (t.conjugated_type?.includes("イ")) sub = "一类形容词";
-        else sub = "二类形容词";
+      else if (t.pos === '形容詞') {
+        cat = '形容词';
+        sub = '一类形容词';
       }
 
       if (!cat) return;
-      if (!result[cat][sub]) result[cat][sub] = {};
-      result[cat][sub][base] = (result[cat][sub][base] || 0) + 1;
+      map[cat][sub] ??= {};
+      map[cat][sub][base] = (map[cat][sub][base] || 0) + 1;
     });
 
-    progressBar.style.width = "100%";
-    setTimeout(() => progressBox.style.display = "none", 500);
-
-    render(result);
-    statusEl.textContent = "解析完成";
+    render(map);
+    statusEl.textContent = '分析完成';
   });
 }
 
-function render(data) {
-  wordListEl.innerHTML = "";
-  Object.entries(data).forEach(([cat, subs]) => {
-    const h = document.createElement("h3");
-    h.textContent = cat;
-    wordListEl.appendChild(h);
+function render(map) {
+  wordListEl.innerHTML = '';
+  for (const [cat, subs] of Object.entries(map)) {
+    const section = document.createElement('div');
+    section.className = 'word-section';
+    section.innerHTML = `<h3>${cat}</h3>`;
+    wordListEl.appendChild(section);
 
-    Object.entries(subs).forEach(([sub, words]) => {
-      const s = document.createElement("div");
-      s.innerHTML = `<strong>${sub}</strong>`;
-      wordListEl.appendChild(s);
+    for (const [sub, words] of Object.entries(subs)) {
+      const subTitle = document.createElement('div');
+      subTitle.className = 'sub-title';
+      subTitle.textContent = sub;
+      section.appendChild(subTitle);
 
-      Object.entries(words)
-        .sort((a,b)=>b[1]-a[1])
-        .forEach(([w,f]) => {
-          const d = document.createElement("div");
-          d.className = "word-card";
-          d.innerHTML = `${w}<div class="freq">出现 ${f} 次</div>`;
-          d.onclick = () => addVocab(w);
-          wordListEl.appendChild(d);
-        });
-    });
-  });
+      Object.entries(words).sort((a,b)=>b[1]-a[1]).forEach(([w,f])=>{
+        const span = document.createElement('span');
+        span.className = 'word-card';
+        span.innerHTML = `${w} <span class="freq">(${f})</span>`;
+        span.onclick = ()=>addVocab(w);
+        section.appendChild(span);
+      });
+    }
+  }
 }
 
 function addVocab(word) {
   if (vocabSet.has(word)) return;
   vocabSet.add(word);
-  const d = document.createElement("div");
-  d.textContent = word;
-  vocabBookEl.appendChild(d);
+  const div = document.createElement('div');
+  div.className = 'vocab-item';
+  div.textContent = word;
+  vocabBookEl.appendChild(div);
 }
-
-});
 </script>
 </body>
 </html>
