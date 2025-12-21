@@ -1,151 +1,169 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <title>日语试卷单词提取工具（修复版）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    /* ... 保持您的 CSS 不变 ... */
-    body { margin: 0; font-family: sans-serif; background: #fff; color: #222; }
-    header { padding: 16px 24px; border-bottom: 1px solid #e5e7eb; background: #f8fbff; }
-    header h1 { margin: 0; font-size: 20px; color: #2563eb; }
-    main { display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px 24px; }
-    .panel { background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); padding: 16px; border: 1px solid #eee; }
-    .upload-area { border: 2px dashed #93c5fd; border-radius: 12px; padding: 24px; display: block; text-align: center; color: #2563eb; cursor: pointer; }
-    .word-section h3 { margin-top: 20px; color: #1d4ed8; border-bottom: 2px solid #eff6ff; }
-    .sub-title { margin: 12px 0 6px; font-weight: bold; color: #4b5563; }
-    .word-card { display: inline-block; margin: 4px; padding: 6px 10px; background: #f9fafb; border-radius: 6px; cursor: pointer; font-size: 14px; border: 1px solid #f0f0f0; }
-    .word-card:hover { background: #eff6ff; border-color: #3b82f6; }
-    .freq { font-size: 12px; color: #9ca3af; }
-    .vocab-item { font-size: 14px; padding: 4px 8px; background: #f3f4f6; margin-bottom: 4px; border-radius: 4px; }
-  </style>
+    <meta charset="UTF-8">
+    <title>日语试卷词频分析工具（本地加速版）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; font-family: -apple-system, sans-serif; background: #f0f4f8; color: #333; line-height: 1.6; }
+        header { background: #2563eb; color: white; padding: 1rem 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        main { display: grid; grid-template-columns: 1fr 300px; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .panel { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .upload-zone { border: 2px dashed #3b82f6; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: 0.3s; }
+        .upload-zone:hover { background: #eff6ff; }
+        #status { font-weight: bold; margin: 15px 0; padding: 10px; border-radius: 6px; }
+        .status-loading { background: #fef3c7; color: #92400e; }
+        .status-ready { background: #d1fae5; color: #065f46; }
+        .status-error { background: #fee2e2; color: #b91c1c; }
+        .word-tag { display: inline-block; background: #f1f5f9; padding: 6px 12px; margin: 4px; border-radius: 20px; font-size: 14px; cursor: pointer; border: 1px solid #e2e8f0; }
+        .word-tag:hover { background: #3b82f6; color: white; }
+        .count { font-size: 11px; opacity: 0.6; margin-left: 5px; }
+        h3 { border-left: 4px solid #3b82f6; padding-left: 10px; margin-top: 25px; }
+        .vocab-item { padding: 8px; border-bottom: 1px solid #f1f5f9; font-size: 14px; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @media (max-width: 768px) { main { grid-template-columns: 1fr; } }
+    </style>
 </head>
-
 <body>
-<header><h1>日语试卷单词提取工具🔍</h1></header>
+
+<header>
+    <h1>日语试卷词频提取工具 🔍</h1>
+</header>
 
 <main>
-  <section class="panel">
-    <label class="upload-area" for="fileInput" id="dropZone">点击上传 Word（.docx）</label>
-    <input type="file" id="fileInput" accept=".docx" hidden />
-    <div id="status" style="margin-top:10px; font-weight: bold;">正在初始化分词引擎，请稍候...</div>
-    <div id="wordList"></div>
-  </section>
-  <aside class="panel">
-    <h3>📘 生词本</h3>
-    <div id="vocabBook"></div>
-  </aside>
+    <section class="panel">
+        <div id="status" class="status-loading">正在尝试从本地加载字典引擎...</div>
+        
+        <label class="upload-zone" for="fileInput" id="dropArea">
+            <big>📄 点击此处上传 Word (.docx) 试卷</big>
+            <p style="color: #64748b;">支持自动分词、词形还原、按词性分类</p>
+        </label>
+        <input type="file" id="fileInput" accept=".docx" hidden>
+
+        <div id="result"></div>
+    </section>
+
+    <aside class="panel">
+        <h3>📘 生词本</h3>
+        <div id="vocabList"></div>
+        <button id="clearVocab" style="margin-top:20px; font-size:12px; color:#94a3b8; background:none; border:none; cursor:pointer;">清空列表</button>
+    </aside>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
 
 <script>
-const statusEl = document.getElementById('status');
-const wordListEl = document.getElementById('wordList');
-const vocabBookEl = document.getElementById('vocabBook');
-const vocabSet = new Set();
-let kuromojiTokenizer = null;
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const vocabListEl = document.getElementById('vocabList');
+    const fileInput = document.getElementById('fileInput');
+    let tokenizer = null;
+    const vocabSet = new Set();
 
-// 1. 页面加载即初始化分词器 (提前下载字典)
-kuromoji.builder({
-  dicPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'
-}).build((err, tokenizer) => {
-  if (err) {
-    statusEl.textContent = '❌ 分词引擎加载失败，请检查网络或刷新页面';
-    console.error(err);
-  } else {
-    kuromojiTokenizer = tokenizer;
-    statusEl.textContent = '✅ 系统就绪，请上传文件';
-    statusEl.style.color = 'green';
-  }
-});
+    // 1. 初始化分词器（使用本地路径）
+    console.log("正在初始化...");
+    kuromoji.builder({ dicPath: "dict/" }).build((err, _tokenizer) => {
+        if (err) {
+            statusEl.className = 'status-error';
+            statusEl.innerHTML = `❌ 引擎启动失败！<br><small>请确保是通过 http://localhost 访问，且文件夹内有 dict 目录。</small>`;
+            console.error(err);
+        } else {
+            tokenizer = _tokenizer;
+            statusEl.className = 'status-ready';
+            statusEl.textContent = "✅ 本地引擎已就绪，请上传文件。";
+        }
+    });
 
-document.getElementById('fileInput').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file || !kuromojiTokenizer) return;
+    // 2. 监听文件上传
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file || !tokenizer) return;
 
-  statusEl.textContent = '正在读取 Word 文档...';
-  try {
-    const buffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-    statusEl.textContent = '正在分析词频...';
-    
-    // 使用 setTimeout 避免 UI 卡死
-    setTimeout(() => {
-        analyzeJapanese(result.value);
-    }, 100);
-  } catch (err) {
-    statusEl.textContent = '❌ 文件读取失败';
-  }
-});
+        statusEl.textContent = "正在读取 Word 文档内容...";
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const { value } = await mammoth.extractRawText({ arrayBuffer });
+            
+            statusEl.textContent = "正在进行日语语言分析...";
+            
+            // 使用 setTimeout 异步处理，防止 UI 瞬间卡死
+            setTimeout(() => {
+                const tokens = tokenizer.tokenize(value);
+                processAndRender(tokens);
+            }, 50);
 
-function analyzeJapanese(text) {
-  const map = { 名词:{}, 动词:{}, 形容词:{} };
-  const tokens = kuromojiTokenizer.tokenize(text);
+        } catch (err) {
+            statusEl.className = 'status-error';
+            statusEl.textContent = "❌ 解析失败，请检查文件格式。";
+        }
+    });
 
-  tokens.forEach(t => {
-    let base = t.basic_form !== '*' ? t.basic_form : t.surface_form;
-    let cat = null, sub = '其他';
+    // 3. 处理分词数据
+    function processAndRender(tokens) {
+        const data = { '名词': {}, '动词': {}, '形容词': {} };
+        
+        tokens.forEach(t => {
+            let category = null;
+            if (t.pos === '名詞') category = '名词';
+            else if (t.pos === '動詞') category = '动词';
+            else if (t.pos === '形容詞') category = '形容词';
 
-    if (t.pos === '動詞') {
-      cat = '动词';
-      if (t.conjugated_type?.includes('五段')) sub = '一类动词（五段）';
-      else if (t.conjugated_type?.includes('一段')) sub = '二类动词（一段）';
-      else if (base === 'する') sub = '三类动词（サ变）';
-      else if (base === '来る') sub = '三类动词（カ变）';
-    } else if (t.pos === '名詞') {
-      cat = '名词';
-      if (t.pos_detail_1 === '数') sub = '量词';
-      else if (/^[ァ-ヶー]+$/.test(t.surface_form)) sub = '外来语';
-      else sub = '普通名词';
-    } else if (t.pos === '形容詞') {
-      cat = '形容词';
-      sub = '一类形容词';
+            if (category) {
+                // 优先使用词源形态（还原动词原型）
+                const word = t.basic_form !== '*' ? t.basic_form : t.surface_form;
+                
+                // 简单过滤：过滤掉长度为1的非汉字词（如：て、に、を、は）
+                if (word.length < 2 && !/[\u4E00-\u9FFF]/.test(word)) return;
+                
+                data[category][word] = (data[category][word] || 0) + 1;
+            }
+        });
+
+        renderHTML(data);
     }
 
-    if (!cat) return;
-    map[cat][sub] ??= {};
-    map[cat][sub][base] = (map[cat][sub][base] || 0) + 1;
-  });
+    // 4. 渲染结果
+    function renderHTML(data) {
+        resultEl.innerHTML = '';
+        statusEl.textContent = "✅ 分析完成！点击单词可加入生词本。";
 
-  render(map);
-  statusEl.textContent = '分析完成！';
-}
+        for (const cat in data) {
+            if (Object.keys(data[cat]).length === 0) continue;
 
-function render(map) {
-  wordListEl.innerHTML = '';
-  for (const [cat, subs] of Object.entries(map)) {
-    const section = document.createElement('div');
-    section.className = 'word-section';
-    section.innerHTML = `<h3>${cat}</h3>`; // 修复：添加了反引号
-    
-    for (const [sub, words] of Object.entries(subs)) {
-      const subTitle = document.createElement('div');
-      subTitle.className = 'sub-title';
-      subTitle.textContent = sub;
-      section.appendChild(subTitle);
+            const h3 = document.createElement('h3');
+            h3.textContent = cat;
+            resultEl.appendChild(h3);
 
-      Object.entries(words).sort((a,b)=>b[1]-a[1]).forEach(([w,f])=>{
-        const span = document.createElement('span');
-        span.className = 'word-card';
-        span.innerHTML = `${w} <span class="freq">(${f})</span>`; // 修复：添加了反引号
-        span.onclick = () => addVocab(w);
-        section.appendChild(span);
-      });
+            // 按频次排序
+            const sortedWords = Object.entries(data[cat]).sort((a, b) => b[1] - a[1]);
+            
+            sortedWords.forEach(([word, freq]) => {
+                const span = document.createElement('span');
+                span.className = 'word-tag';
+                span.innerHTML = `${word} <span class="count">${freq}</span>`;
+                span.onclick = () => addToVocab(word);
+                resultEl.appendChild(span);
+            });
+        }
     }
-    wordListEl.appendChild(section);
-  }
-}
 
-function addVocab(word) {
-  if (vocabSet.has(word)) return;
-  vocabSet.add(word);
-  const div = document.createElement('div');
-  div.className = 'vocab-item';
-  div.textContent = word;
-  vocabBookEl.appendChild(div);
-}
+    // 5. 生词本功能
+    function addToVocab(word) {
+        if (vocabSet.has(word)) return;
+        vocabSet.add(word);
+        
+        const div = document.createElement('div');
+        div.className = 'vocab-item';
+        div.textContent = `• ${word}`;
+        vocabListEl.prepend(div); // 新加的词在最上面
+    }
+
+    document.getElementById('clearVocab').onclick = () => {
+        vocabSet.clear();
+        vocabListEl.innerHTML = '';
+    };
 </script>
+
 </body>
 </html>
