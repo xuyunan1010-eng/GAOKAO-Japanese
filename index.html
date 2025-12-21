@@ -1,243 +1,75 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>日本語試験語彙頻度分析ツール🔍</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<style>
-body{
-  margin:0;
-  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans",sans-serif;
-  background:#ffffff;
-  color:#222;
-}
-header{
-  padding:16px 24px;
-  border-bottom:1px solid #e5e7eb;
-  background:#f8fbff;
-}
-header h1{
-  margin:0;
-  font-size:20px;
-  color:#2563eb;
-}
-main{
-  display:grid;
-  grid-template-columns:1fr 320px;
-  gap:16px;
-  padding:16px 24px;
-}
-.panel{
-  background:#fff;
-  border-radius:12px;
-  box-shadow:0 4px 12px rgba(0,0,0,.04);
-  padding:16px;
-}
-.upload{
-  border:2px dashed #93c5fd;
-  border-radius:12px;
-  padding:32px;
-  text-align:center;
-  cursor:pointer;
-  color:#2563eb;
-}
-#fileInput{display:none}
-
-/* loading bar */
-#loader{
-  height:3px;
-  background:#e5e7eb;
-  border-radius:2px;
-  overflow:hidden;
-  margin:12px 0;
-  display:none;
-}
-#loader div{
-  height:100%;
-  width:0%;
-  background:#2563eb;
-  transition:width .4s ease;
-}
-
-.section h3{
-  margin-top:20px;
-  color:#1d4ed8;
-}
-.sub{
-  margin:10px 0 4px;
-  font-weight:bold;
-  font-size:14px;
-}
-.word{
-  display:inline-block;
-  margin:4px;
-  padding:6px 10px;
-  border-radius:6px;
-  background:#f9fafb;
-  box-shadow:0 1px 4px rgba(0,0,0,.05);
-  cursor:pointer;
-  font-size:14px;
-}
-.word:hover{background:#eff6ff}
-.freq{
-  font-size:12px;
-  color:#6b7280;
-}
-aside h3{margin-top:0;color:#2563eb}
-.vocab-item{
-  font-size:14px;
-  margin-bottom:6px;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>日语词频分析 - 最终兼容版</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; text-align: center; }
+        #status { padding: 20px; margin: 20px auto; max-width: 600px; border-radius: 10px; font-weight: bold; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .loading { color: #f59e0b; border: 2px solid #f59e0b; }
+        .ready { color: #10b981; border: 2px solid #10b981; }
+        #main { display: none; }
+        button { padding: 15px 30px; font-size: 16px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    </style>
 </head>
-
 <body>
-<header>
-  <h1>日本語試験語彙頻度分析ツール🔍</h1>
-</header>
 
-<main>
-<section class="panel">
-  <label class="upload" for="fileInput">点击上传 Word（.docx）日语试卷</label>
-  <input id="fileInput" type="file" accept=".docx">
+    <div id="status" class="loading">正在下载远程词库 (约16MB)...<br>请保持网络通畅，不要刷新</div>
 
-  <div id="loader"><div></div></div>
-  <div id="status" style="color:#6b7280"></div>
-  <div id="result"></div>
-</section>
+    <div id="main">
+        <input type="file" id="input" accept=".docx" style="display:none">
+        <button onclick="document.getElementById('input').click()">上传 Word 试卷</button>
+        <div id="res" style="text-align: left; max-width: 800px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 10px;"></div>
+    </div>
 
-<aside class="panel">
-  <h3>📘 生词本</h3>
-  <div id="vocab"></div>
-</aside>
-</main>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
+    <script>
+        const statusEl = document.getElementById('status');
+        const mainEl = document.getElementById('main');
+        let tokenizer = null;
 
-<script>
-const fileInput = document.getElementById('fileInput');
-const statusEl = document.getElementById('status');
-const resultEl = document.getElementById('result');
-const vocabEl = document.getElementById('vocab');
-const loader = document.getElementById('loader');
-const bar = loader.firstElementChild;
+        // 直接使用 CDN 路径，避免本地服务器报错
+        kuromoji.builder({ 
+            dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" 
+        }).build((err, _tokenizer) => {
+            if (err) {
+                statusEl.innerHTML = "❌ 加载失败，请检查网络或刷新重试<br><small>" + err + "</small>";
+                return;
+            }
+            tokenizer = _tokenizer;
+            statusEl.className = "ready";
+            statusEl.textContent = "✅ 引擎准备就绪！";
+            mainEl.style.display = "block";
+        });
 
-let tokenizer = null;
-const vocabSet = new Set();
+        document.getElementById('input').onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-/* ---------- loading 控制 ---------- */
-function show(step){
-  loader.style.display='block';
-  statusEl.textContent=step;
-  if(step==='读取文件') bar.style.width='33%';
-  if(step==='分析文本') bar.style.width='66%';
-  if(step==='完成') bar.style.width='100%';
-}
-function hide(){
-  setTimeout(()=>{ loader.style.display='none'; bar.style.width='0%' },600);
-}
-
-/* ---------- 初始化 tokenizer（只一次） ---------- */
-kuromoji.builder({
-  dicPath:'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'
-}).build((err,t)=>{
-  if(err){
-    statusEl.textContent='分词器加载失败';
-    return;
-  }
-  tokenizer=t;
-  statusEl.textContent='引擎已就绪，请上传文件';
-});
-
-/* ---------- 文件处理 ---------- */
-fileInput.addEventListener('change',async()=>{
-  const file=fileInput.files[0];
-  if(!file||!tokenizer) return;
-
-  show('读取文件');
-  const buffer=await file.arrayBuffer();
-  const {value:text}=await mammoth.extractRawText({arrayBuffer:buffer});
-
-  show('分析文本');
-  setTimeout(()=>analyze(text),50);
-});
-
-/* ---------- 核心分析 ---------- */
-function analyze(text){
-  const map={名词:{},动词:{},形容词:{}};
-  const tokens=tokenizer.tokenize(text);
-
-  tokens.forEach(t=>{
-    let cat=null,sub=null;
-    const base=t.basic_form!=='*'?t.basic_form:t.surface_form;
-
-    if(t.pos==='名詞'){
-      cat='名词';
-      if(t.pos_detail_1==='数') sub='量词';
-      else if(/^[ァ-ヶー]+$/.test(t.surface_form)) sub='片假名名词';
-      else if(['上','下','前','後','中','外','右','左','東','西','南','北'].includes(base)) sub='方位名词';
-      else sub='普通名词';
-    }
-    if(t.pos==='動詞'){
-      cat='动词';
-      if(t.conjugated_type?.includes('五段')) sub='一类动词（五段）';
-      else if(t.conjugated_type?.includes('一段')) sub='二类动词（一段）';
-      else if(base==='する') sub='三类动词（サ变）';
-      else if(base==='来る') sub='三类动词（カ变）';
-      else sub='其他';
-    }
-    if(t.pos==='形容詞'){
-      cat='形容词';
-      sub='一类形容词';
-    }
-    if(!cat) return;
-    map[cat][sub]??={};
-    map[cat][sub][base]=(map[cat][sub][base]||0)+1;
-  });
-
-  render(map);
-  show('完成');
-  statusEl.textContent='分析完成，点击单词加入生词本';
-  hide();
-}
-
-/* ---------- 渲染 ---------- */
-function render(map){
-  resultEl.innerHTML='';
-  Object.entries(map).forEach(([cat,subs])=>{
-    const sec=document.createElement('div');
-    sec.className='section';
-    sec.innerHTML=`<h3>${cat}</h3>`;
-    resultEl.appendChild(sec);
-
-    Object.entries(subs).forEach(([sub,words])=>{
-      const st=document.createElement('div');
-      st.className='sub';
-      st.textContent=sub;
-      sec.appendChild(st);
-
-      Object.entries(words).sort((a,b)=>b[1]-a[1]).forEach(([w,f])=>{
-        const span=document.createElement('span');
-        span.className='word';
-        span.innerHTML=`${w} <span class="freq">(${f})</span>`;
-        span.onclick=()=>addVocab(w);
-        sec.appendChild(span);
-      });
-    });
-  });
-}
-
-/* ---------- 生词本 ---------- */
-function addVocab(word){
-  if(vocabSet.has(word)) return;
-  vocabSet.add(word);
-  const d=document.createElement('div');
-  d.className='vocab-item';
-  d.textContent=word;
-  vocabEl.appendChild(d);
-}
-</script>
+            statusEl.textContent = "正在读取 Word...";
+            const buffer = await file.arrayBuffer();
+            const { value } = await mammoth.extractRawText({ arrayBuffer: buffer });
+            
+            statusEl.textContent = "正在提取日语单词...";
+            // 异步处理，防止 UI 冻结
+            setTimeout(() => {
+                const tokens = tokenizer.tokenize(value);
+                const result = {};
+                tokens.forEach(t => {
+                    if (['名詞','動詞','形容詞'].includes(t.pos)) {
+                        const word = t.basic_form === '*' ? t.surface_form : t.basic_form;
+                        result[word] = (result[word] || 0) + 1;
+                    }
+                });
+                
+                document.getElementById('res').innerHTML = "<h3>词频统计：</h3>" + 
+                    Object.entries(result).sort((a,b)=>b[1]-a[1]).slice(0, 100)
+                    .map(([w, f]) => `<span style="display:inline-block; margin:5px; padding:5px; background:#eee;">${w}(${f})</span>`).join('');
+                statusEl.textContent = "✅ 分析完成！";
+            }, 100);
+        };
+    </script>
 </body>
 </html>
