@@ -1,75 +1,192 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <title>日语词频分析 - 最终兼容版</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; text-align: center; }
-        #status { padding: 20px; margin: 20px auto; max-width: 600px; border-radius: 10px; font-weight: bold; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .loading { color: #f59e0b; border: 2px solid #f59e0b; }
-        .ready { color: #10b981; border: 2px solid #10b981; }
-        #main { display: none; }
-        button { padding: 15px 30px; font-size: 16px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    </style>
+<meta charset="UTF-8">
+<title>日语辞书形提取工具 (防卡死版)</title>
+<style>
+  body { font-family: "Hiragino Kaku Gothic ProN", sans-serif; padding: 30px; background: #f8fafc; color: #334155; }
+  .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+  h2 { border-bottom: 2px solid #3b82f6; padding-bottom: 10px; color: #1e293b; }
+  
+  /* 状态栏样式 */
+  .status-bar { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 14px; transition: 0.3s; }
+  .status-init { background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }
+  .status-ready { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+  
+  .upload-btn {
+    display: block; width: 100%; padding: 20px; border: 2px dashed #cbd5e1; border-radius: 8px;
+    background: #f1f5f9; text-align: center; cursor: not-allowed; color: #94a3b8; transition: 0.2s;
+  }
+  .upload-btn.active { cursor: pointer; background: #eff6ff; border-color: #3b82f6; color: #2563eb; }
+  .upload-btn.active:hover { background: #dbeafe; }
+
+  .result-box { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .col h3 { font-size: 16px; background: #e2e8f0; padding: 8px; border-radius: 4px; }
+  
+  .word-item { 
+    display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 6px 0; font-size: 15px; 
+  }
+  .base-form { color: #2563eb; font-weight: bold; } /* 辞书形颜色 */
+  .pos-tag { font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
+</style>
 </head>
 <body>
 
-    <div id="status" class="loading">正在下载远程词库 (约16MB)...<br>请保持网络通畅，不要刷新</div>
+<div class="container">
+  <h2>🇯🇵 日语辞书形分析器 (Web Worker)</h2>
+  
+  <div id="status" class="status-bar status-init">
+    ⏳ 正在后台启动分析引擎 (下载词库中)...<br>
+    <small style="font-weight:normal">第一次加载需要 10-20 秒，请耐心等待，不会卡死浏览器。</small>
+  </div>
 
-    <div id="main">
-        <input type="file" id="input" accept=".docx" style="display:none">
-        <button onclick="document.getElementById('input').click()">上传 Word 试卷</button>
-        <div id="res" style="text-align: left; max-width: 800px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 10px;"></div>
-    </div>
+  <label id="dropZone" class="upload-btn">
+    等待引擎就绪...
+    <input type="file" id="fileInput" accept=".docx" hidden disabled>
+  </label>
 
-    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
+  <div id="output" class="result-box">
+    <div class="col" id="verbs"><h3>动词 (自动还原辞书形)</h3><div></div></div>
+    <div class="col" id="nouns"><h3>名词 / 形容词</h3><div></div></div>
+  </div>
+</div>
 
-    <script>
-        const statusEl = document.getElementById('status');
-        const mainEl = document.getElementById('main');
-        let tokenizer = null;
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
 
-        // 直接使用 CDN 路径，避免本地服务器报错
-        kuromoji.builder({ 
-            dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" 
-        }).build((err, _tokenizer) => {
+<script>
+  const statusEl = document.getElementById('status');
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+  // --- 定义 Worker 代码 (在后台运行的脚本) ---
+  const workerCode = `
+    importScripts("https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js");
+
+    let tokenizer = null;
+
+    // 监听主线程发来的消息
+    self.onmessage = function(e) {
+      if (e.data.type === 'init') {
+        // 初始化词库
+        kuromoji.builder({ dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/" })
+          .build(function(err, _tokenizer) {
             if (err) {
-                statusEl.innerHTML = "❌ 加载失败，请检查网络或刷新重试<br><small>" + err + "</small>";
-                return;
+              self.postMessage({ type: 'error', msg: err.message });
+            } else {
+              tokenizer = _tokenizer;
+              self.postMessage({ type: 'ready' });
             }
-            tokenizer = _tokenizer;
-            statusEl.className = "ready";
-            statusEl.textContent = "✅ 引擎准备就绪！";
-            mainEl.style.display = "block";
-        });
+          });
+      } else if (e.data.type === 'analyze') {
+        // 开始分析文本
+        if (!tokenizer) return;
+        const tokens = tokenizer.tokenize(e.data.text);
+        
+        // 提取结果，只返回必要数据以节省内存
+        const results = tokens.map(t => ({
+          surface: t.surface_form,   // 原文 (如: 噛まれました)
+          base: t.basic_form,        // 辞书形 (如: 噛む)
+          pos: t.pos,                // 词性 (如: 動詞)
+          pos_detail: t.pos_detail_1 // 详细词性
+        }));
+        
+        self.postMessage({ type: 'result', data: results });
+      }
+    };
+  `;
 
-        document.getElementById('input').onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+  // --- 主线程逻辑 ---
+  
+  // 1. 创建 Worker
+  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  const worker = new Worker(URL.createObjectURL(blob));
 
-            statusEl.textContent = "正在读取 Word...";
-            const buffer = await file.arrayBuffer();
-            const { value } = await mammoth.extractRawText({ arrayBuffer: buffer });
-            
-            statusEl.textContent = "正在提取日语单词...";
-            // 异步处理，防止 UI 冻结
-            setTimeout(() => {
-                const tokens = tokenizer.tokenize(value);
-                const result = {};
-                tokens.forEach(t => {
-                    if (['名詞','動詞','形容詞'].includes(t.pos)) {
-                        const word = t.basic_form === '*' ? t.surface_form : t.basic_form;
-                        result[word] = (result[word] || 0) + 1;
-                    }
-                });
-                
-                document.getElementById('res').innerHTML = "<h3>词频统计：</h3>" + 
-                    Object.entries(result).sort((a,b)=>b[1]-a[1]).slice(0, 100)
-                    .map(([w, f]) => `<span style="display:inline-block; margin:5px; padding:5px; background:#eee;">${w}(${f})</span>`).join('');
-                statusEl.textContent = "✅ 分析完成！";
-            }, 100);
-        };
-    </script>
+  // 2. 启动 Worker
+  worker.postMessage({ type: 'init' });
+
+  // 3. 监听 Worker 返回的消息
+  worker.onmessage = function(e) {
+    const msg = e.data;
+
+    if (msg.type === 'ready') {
+      statusEl.className = 'status-bar status-ready';
+      statusEl.textContent = '✅ 引擎已就绪！(辞书形还原功能可用)';
+      dropZone.className = 'upload-btn active';
+      dropZone.childNodes[0].nodeValue = '📂 点击上传 Word 试卷 (.docx)';
+      fileInput.disabled = false;
+    } 
+    else if (msg.type === 'error') {
+      statusEl.textContent = '❌ 加载失败: ' + msg.msg;
+      statusEl.style.background = '#fee2e2';
+    }
+    else if (msg.type === 'result') {
+      render(msg.data);
+      statusEl.textContent = '✅ 分析完成！';
+    }
+  };
+
+  // 4. 处理文件上传
+  fileInput.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    statusEl.textContent = '⌛ 正在读取文档...';
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+      
+      statusEl.textContent = '⚡ 正在后台进行语法分析 (还原辞书形)...';
+      // 发送给后台线程处理
+      worker.postMessage({ type: 'analyze', text: result.value });
+      
+    } catch (err) {
+      statusEl.textContent = '❌ 文件读取错误';
+    }
+  });
+
+  // 5. 渲染结果
+  function render(tokens) {
+    const verbs = {};
+    const nouns = {};
+
+    tokens.forEach(t => {
+      // 核心逻辑：如果有 basic_form (辞书形) 且不是 *，就用辞书形；否则用原文
+      const dictForm = (t.base && t.base !== '*') ? t.base : t.surface;
+
+      if (t.pos === '動詞') {
+        // 过滤掉非自立动词 (如: いる、ある、なる 等辅助动词，视需求而定)
+        if (t.pos_detail !== '非自立') {
+           verbs[dictForm] = (verbs[dictForm] || 0) + 1;
+        }
+      } else if (t.pos === '名詞' && t.pos_detail === '一般') {
+         nouns[dictForm] = (nouns[dictForm] || 0) + 1;
+      } else if (t.pos === '形容詞') {
+         nouns[dictForm] = (nouns[dictForm] || 0) + 1; // 暂时放在右栏
+      }
+    });
+
+    displayList('verbs', verbs);
+    displayList('nouns', nouns);
+  }
+
+  function displayList(id, data) {
+    const container = document.querySelector(`#${id} div`);
+    container.innerHTML = '';
+    
+    // 按词频排序
+    const sorted = Object.entries(data).sort((a,b) => b[1] - a[1]).slice(0, 100);
+    
+    sorted.forEach(([word, count]) => {
+      const div = document.createElement('div');
+      div.className = 'word-item';
+      div.innerHTML = `
+        <span class="base-form">${word}</span>
+        <span style="color:#64748b">x ${count}</span>
+      `;
+      container.appendChild(div);
+    });
+  }
+</script>
+
 </body>
 </html>
