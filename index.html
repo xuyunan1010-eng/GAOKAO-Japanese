@@ -2,148 +2,253 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>日语高频词分类提取 (本地词库版)</title>
+    <title>日本語試験語彙頻度分析ツール🔍</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <style>
-        body { font-family: "Hiragino Kaku Gothic ProN", "Microsoft YaHei", sans-serif; background: #f0f4f8; padding: 20px; color: #1e293b; }
-        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .header { text-align: center; margin-bottom: 25px; }
-        .status { padding: 12px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; background: #fff7ed; color: #c2410c; text-align: center; border: 1px solid #ffedd5; }
-        .status.ready { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-        
-        /* 三栏布局 */
-        .columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 20px; }
-        .column { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; height: 600px; display: flex; flex-direction: column; }
-        .column h3 { margin-top: 0; padding-bottom: 12px; border-bottom: 3px solid #3b82f6; font-size: 18px; color: #334155; display: flex; justify-content: space-between; }
-        .word-list { overflow-y: auto; flex-grow: 1; }
-        
-        .word-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 5px; border-bottom: 1px solid #f1f5f9; }
-        .word-item:hover { background: #f8fafc; }
-        .word-text { font-weight: 600; color: #2563eb; font-size: 15px; }
-        .word-count { background: #f1f5f9; color: #64748b; font-size: 11px; padding: 2px 7px; border-radius: 10px; }
-        
-        button { width: 100%; padding: 18px; background: #3b82f6; color: white; border: none; border-radius: 10px; font-size: 17px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        button:hover { background: #2563eb; shadow: 0 4px 12px rgba(59,130,246,0.3); }
-        button:disabled { background: #cbd5e1; cursor: not-allowed; }
-        
-        .badge { font-size: 12px; background: #3b82f6; color: white; padding: 2px 8px; border-radius: 20px; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f0f4f8;
+            color: #333;
+        }
+        header {
+            background: #2563eb;
+            color: #fff;
+            padding: 1rem 2rem;
+        }
+        main {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+        .panel {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .upload-zone {
+            border: 2px dashed #3b82f6;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .upload-zone:hover {
+            background: #eff6ff;
+        }
+        #status {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            background: #e0f2fe;
+            color: #075985;
+        }
+        .word-tag {
+            display: inline-block;
+            background: #f1f5f9;
+            padding: 6px 12px;
+            margin: 4px;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+        }
+        .word-tag:hover {
+            background: #3b82f6;
+            color: #fff;
+        }
+        .count {
+            font-size: 11px;
+            opacity: 0.6;
+            margin-left: 4px;
+        }
+        h3 {
+            border-left: 4px solid #3b82f6;
+            padding-left: 10px;
+            margin-top: 25px;
+        }
+        .vocab-item {
+            font-size: 14px;
+            padding: 6px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        button {
+            cursor: pointer;
+        }
+        @media (max-width: 768px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
+
 <body>
 
-<div class="container">
-    <div class="header">
-        <h2>🇯🇵 日语真题词频分析 (分类版)</h2>
-    </div>
+<header>
+    <h1>日本語試験語彙頻度分析ツール 🔍</h1>
+</header>
 
-    <div id="status" class="status">正在读取本地字典 (dict/)...</div>
-    
-    <input type="file" id="fileInput" accept=".docx" hidden>
-    <button id="uploadBtn" disabled>等待引擎就绪...</button>
+<main>
+    <section class="panel">
+        <div id="status">📘 引擎已就绪，请上传 Word 试卷</div>
 
-    <div class="columns">
-        <div class="column">
-            <h3><span>🔹 动词</span> <span id="verbCount" class="badge">0</span></h3>
-            <div id="verbList" class="word-list"></div>
-        </div>
-        <div class="column">
-            <h3><span>🔸 名词</span> <span id="nounCount" class="badge">0</span></h3>
-            <div id="nounList" class="word-list"></div>
-        </div>
-        <div class="column">
-            <h3><span>🌿 形容/副词</span> <span id="adjCount" class="badge">0</span></h3>
-            <div id="adjList" class="word-list"></div>
-        </div>
-    </div>
-</div>
+        <label class="upload-zone" for="fileInput">
+            <big>📄 点击上传 Word（.docx）试卷</big>
+            <p style="color:#64748b;">自动分词 · 词频统计 · 分类展示</p>
+        </label>
+        <input type="file" id="fileInput" accept=".docx" hidden>
 
+        <div style="margin:15px 0;">
+            <button id="exportExcel"
+                    style="padding:8px 14px;border:none;
+                           background:#10b981;color:#fff;
+                           border-radius:6px;font-size:14px;">
+                📊 导出 Excel
+            </button>
+        </div>
+
+        <div id="result"></div>
+    </section>
+
+    <aside class="panel">
+        <h3>📘 生词本</h3>
+        <div id="vocabList"></div>
+        <button id="clearVocab"
+                style="margin-top:15px;font-size:12px;
+                       background:none;border:none;color:#94a3b8;">
+            清空生词本
+        </button>
+    </aside>
+</main>
+
+<!-- 核心依赖 -->
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.21/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script>
+    const fileInput = document.getElementById('fileInput');
+    const resultEl = document.getElementById('result');
+    const vocabListEl = document.getElementById('vocabList');
     const statusEl = document.getElementById('status');
-    const uploadBtn = document.getElementById('uploadBtn');
-    let tokenizer = null;
 
-    // 使用本地相对路径加载词库 (即你 GitHub 仓库里的 dict 文件夹)
-    kuromoji.builder({ dicPath: "dict/" }).build((err, _tokenizer) => {
+    const vocabSet = new Set();
+    let tokenizer = null;
+    let latestAnalysisData = null;
+
+    // 初始化分词器（CDN 版，不卡）
+    kuromoji.builder({
+        dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
+    }).build((err, tk) => {
         if (err) {
-            statusEl.textContent = "❌ 字典加载失败！请确保 dict 文件夹在 index.html 同级目录下";
+            statusEl.textContent = "❌ 分词引擎加载失败";
             console.error(err);
-            return;
+        } else {
+            tokenizer = tk;
         }
-        tokenizer = _tokenizer;
-        statusEl.textContent = "✅ 本地引擎已就绪！";
-        statusEl.classList.add('ready');
-        uploadBtn.disabled = false;
-        uploadBtn.textContent = "选择 Word 试卷开始分析";
     });
 
-    uploadBtn.onclick = () => document.getElementById('fileInput').click();
-
-    document.getElementById('fileInput').onchange = async (e) => {
+    fileInput.addEventListener('change', async e => {
         const file = e.target.files[0];
         if (!file || !tokenizer) return;
 
-        statusEl.textContent = "⌛ 正在解析文档并还原辞书形...";
-        
-        try {
-            const buffer = await file.arrayBuffer();
-            const { value } = await mammoth.extractRawText({ arrayBuffer: buffer });
-            
+        statusEl.textContent = "📄 正在解析文档…";
+
+        const buffer = await file.arrayBuffer();
+        const { value } = await mammoth.extractRawText({ arrayBuffer: buffer });
+
+        statusEl.textContent = "🧠 正在进行词频分析…";
+
+        setTimeout(() => {
             const tokens = tokenizer.tokenize(value);
-            // 细分词性统计
-            const data = { '動詞': {}, '名詞': {}, '形容詞': {} };
+            analyze(tokens);
+        }, 50);
+    });
 
-            tokens.forEach(t => {
-                // 确定分类：将 形容词 和 形容动词 都归入“形容词”一栏
-                let category = null;
-                if (t.pos === '動詞') category = '動詞';
-                else if (t.pos === '名詞') category = '名詞';
-                else if (t.pos === '形容詞' || t.pos_detail_1 === '形容動詞') category = '形容詞';
+    function analyze(tokens) {
+        const data = { 名词: {}, 动词: {}, 形容词: {} };
 
-                if (category) {
-                    // 核心还原逻辑：取辞书形 (basic_form)
-                    const word = (t.basic_form && t.basic_form !== '*') ? t.basic_form : t.surface_form;
-                    
-                    // 过滤策略：
-                    // 1. 过滤掉助词性质的单字名词（如 'の', 'も'）
-                    // 2. 动词排除掉 'する'、'いる'、'ある' 等超高频辅助动词（可选）
-                    if (word.length > 1 || /[\u4E00-\u9FFF]/.test(word)) {
-                        data[category][word] = (data[category][word] || 0) + 1;
-                    }
-                }
+        tokens.forEach(t => {
+            let cat = null;
+            if (t.pos === '名詞') cat = '名词';
+            if (t.pos === '動詞') cat = '动词';
+            if (t.pos === '形容詞') cat = '形容词';
+            if (!cat) return;
+
+            const word = t.basic_form !== '*' ? t.basic_form : t.surface_form;
+            if (word.length < 2 && !/[\u4e00-\u9fa5]/.test(word)) return;
+
+            data[cat][word] = (data[cat][word] || 0) + 1;
+        });
+
+        latestAnalysisData = data;
+        render(data);
+        statusEl.textContent = "✅ 分析完成，点击单词加入生词本";
+    }
+
+    function render(data) {
+        resultEl.innerHTML = '';
+        for (const cat in data) {
+            const words = Object.entries(data[cat]).sort((a,b)=>b[1]-a[1]);
+            if (!words.length) continue;
+
+            const h3 = document.createElement('h3');
+            h3.textContent = cat;
+            resultEl.appendChild(h3);
+
+            words.forEach(([w,c])=>{
+                const span = document.createElement('span');
+                span.className = 'word-tag';
+                span.innerHTML = `${w}<span class="count">${c}</span>`;
+                span.onclick = ()=>addVocab(w);
+                resultEl.appendChild(span);
             });
-
-            // 渲染三栏
-            renderSection('verbList', 'verbCount', data['動詞']);
-            renderSection('nounList', 'nounCount', data['名詞']);
-            renderSection('adjList', 'adjCount', data['形容詞']);
-            
-            statusEl.textContent = "✅ 分析完成！共提取 " + tokens.length + " 个片段";
-        } catch (err) {
-            statusEl.textContent = "❌ 处理文件出错";
-            console.error(err);
         }
+    }
+
+    function addVocab(word) {
+        if (vocabSet.has(word)) return;
+        vocabSet.add(word);
+        const div = document.createElement('div');
+        div.className = 'vocab-item';
+        div.textContent = '• ' + word;
+        vocabListEl.prepend(div);
+    }
+
+    document.getElementById('clearVocab').onclick = ()=>{
+        vocabSet.clear();
+        vocabListEl.innerHTML = '';
     };
 
-    function renderSection(listId, countId, wordMap) {
-        const container = document.getElementById(listId);
-        const countBadge = document.getElementById(countId);
-        container.innerHTML = '';
-        
-        const sorted = Object.entries(wordMap).sort((a, b) => b[1] - a[1]);
-        countBadge.textContent = sorted.length;
-        
-        sorted.forEach(([word, count]) => {
-            const div = document.createElement('div');
-            div.className = 'word-item';
-            div.innerHTML = `
-                <span class="word-text">${word}</span>
-                <span class="word-count">${count} 次</span>
-            `;
-            container.appendChild(div);
-        });
-    }
+    // Excel 导出
+    document.getElementById('exportExcel').onclick = () => {
+        if (!latestAnalysisData) {
+            alert('请先上传并分析试卷');
+            return;
+        }
+
+        const rows = [['一级分类','单词','出现次数']];
+
+        for (const cat in latestAnalysisData) {
+            Object.entries(latestAnalysisData[cat])
+                .sort((a,b)=>b[1]-a[1])
+                .forEach(([w,c])=>{
+                    rows.push([cat,w,c]);
+                });
+        }
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '词频统计');
+        XLSX.writeFile(wb, '日语试卷词频统计.xlsx');
+    };
 </script>
 
 </body>
